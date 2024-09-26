@@ -1040,25 +1040,26 @@ contract BitCat is ERC20 {
     address _tokenOwner; // 定义一个地址类型的变量，用于存储代币所有者的地址
     IERC20 USDT; // 定义一个 IERC20 接口类型的变量，用于存储 USDT 合约地址
     IUniswapV2Pair pair; // 定义一个 IUniswapV2Pair 接口类型的变量，用于存储 USDT-BitCat 交易对合约地址
-    IUniswapV2Pair nft; // 定义一个 IUniswapV2Pair 接口类型的变量，用于存储 NFT 合约地址
-    Pool public highFeePool; // 定义一个 Pool 类型的变量，用于存储 highFeePool 合约地址
     UsdtReward public reward; // 定义一个 UsdtReward 类型的变量，用于存储 reward 合约地址
     bool private swapping; // 定义一个布尔类型的变量，用于标记是否正在进行兑换和添加流动性操作
     address public uniswapV2Pair; // 定义一个地址类型的变量，用于存储 USDT-BitCat 交易对合约地址
 
     address _destroyAddress = address(0x000000000000000000000000000000000000dEaD); // 定义一个地址类型的变量，用于存储销毁地址
-    address _cakeRouter = address(0x10ED43C718714eb63d5aA57B78B54704E256024E); // 定义一个地址类型的变量，用于存储 PancakeSwap 路由合约地址
-    address _baseToken = address(0x55d398326f99059fF775485246999027B3197955); // 定义一个地址类型的变量，用于存储 USDT 合约地址
+    address _cakeRouter = address(0xB6BA90af76D139AB3170c7df0139636dB6120F7e); // 定义一个地址类型的变量，用于存储 PancakeSwap 路由合约地址
+    address _baseToken = address(0x270E1420eFc26e4945113730a4c3D5cfF58A73ea); // 定义一个地址类型的变量，用于存储 USDT 合约地址
 
-    address _fundAddress = address(0xCBF305DBcC7371015Cd0Eb0d7E8Da590F2472225); // 定义一个地址类型的变量，用于存储基金地址
 
-    mapping(address => bool) public _isExcludedFromFees; // 定义一个映射，用于存储地址是否免除手续费
-    mapping(address => bool) private _isExcludedFromFeesVip; // 定义一个映射，用于存储地址是否免除 VIP 手续费
+    mapping(address => bool) public whiteLeadList; // 定义一个映射，用于存储地址是否是团队长白名单
+    mapping(address => bool) private whiteUserList; // 定义一个映射，用于存储地址是否用户白名单
+    uint256 whiteLeadListBuyNum = 60 * 10 **18;
+    uint256 whiteUserListNum = 30 * 10 **18;
     mapping(address => bool) public _isPairs; // 定义一个映射，用于存储地址是否是交易对地址
     bool public swapAndLiquifyEnabled = true; // 定义一个布尔类型的变量，用于标记是否开启兑换和添加流动性功能
     uint256 public startTime; // 定义一个 uint256 类型的变量，用于存储开始时间
     uint256 total; // 定义一个 uint256 类型的变量，用于存储代币总量
+    uint256 fee = 30;
     mapping(address => uint256) public _haveLpAmount; // 定义一个映射，用于存储地址持有的流动性代币数量
+    
 
     // 构造函数，在合约部署时调用
     constructor(address tokenOwner) ERC20("TL", "TL") {
@@ -1078,8 +1079,6 @@ contract BitCat is ERC20 {
         USDT.approve(address(_cakeRouter), 10**64); // 批准 PancakeSwap 路由合约使用 USDT
 
         pair = IUniswapV2Pair(_uniswapV2Pair); // 初始化 USDT-BitCat 交易对合约地址
-        nft = IUniswapV2Pair(0xde22c1998362a1018d7Db2c32F4E6647dDeAbAe9); // 初始化 NFT 合约地址
-        highFeePool = new Pool(_uniswapV2Pair); // 部署 Pool 合约，并将 USDT-BitCat 交易对地址作为参数传入
         reward = new UsdtReward(_baseToken); // 部署 UsdtReward 合约，并将 USDT 合约地址作为参数传入
         uniswapV2Router = _uniswapV2Router; // 初始化 PancakeSwap 路由合约地址
         uniswapV2Pair = _uniswapV2Pair; // 初始化 USDT-BitCat 交易对合约地址
@@ -1087,7 +1086,7 @@ contract BitCat is ERC20 {
         _isPairs[_uniswapV2Pair] = true; // 将 USDT-BitCat 交易对地址标记为交易对地址
 
         _contractSender = _owner; // 初始化合约发送者地址
-        total = 3000 * 10**26; // 初始化代币总量
+        total = 2100 * 10**22; // 初始化代币总量
 
         _mint(tokenOwner, total); // 给代币所有者地址铸造代币
         startTime = total; // 初始化开始时间
@@ -1109,30 +1108,24 @@ contract BitCat is ERC20 {
     }
 
     // 设置地址是否免除手续费
-    function excludeFromFees(address account, bool excluded) public onlyOwner {
-        _isExcludedFromFees[account] = excluded;
+    function setWhiteUserList(address account, bool excluded) public onlyOwner {
+        whiteUserList[account] = excluded;
     }
 
     // 设置地址是否免除 VIP 手续费
-    function setExcludedFromFeesVip(address pairaddress, bool value) public onlyOwner {
-        _isExcludedFromFeesVip[pairaddress] = value;
+    function setWhiteLeadList(address pairaddress, bool value) public onlyOwner {
+        whiteUserList[pairaddress] = value;
     }
-
-    // 批量设置地址是否免除手续费
-    function excludeFromFeesUsers(address[] memory accounts, bool excluded) public onlyOwner {
+    // 批量设置地址是否用户白名单
+    function setWhiteUserListBatch(address[] memory accounts, bool excluded) public onlyOwner {
         for(uint256 i=0; i<accounts.length;i++){
-            _isExcludedFromFees[accounts[i]] = excluded;
+            whiteUserList[accounts[i]] = excluded;
         }
     }
 
     // 添加其他交易对地址
     function addOtherPair(address pairaddress, bool value) public onlyOwner {
         _isPairs[pairaddress] = value;
-    }
-
-    // 更改 NFT 合约地址
-    function changeNft(IUniswapV2Pair _nft) public onlyOwner {
-        nft = _nft;
     }
 
     // 设置开始时间
@@ -1145,10 +1138,10 @@ contract BitCat is ERC20 {
     // 初始化用户可提取数量
     function initUserOutAmount(address user, uint256 outAmount) internal returns(uint256){
         uint256 buyUsdtAmount = _userBuyUsdtAmount[user]; // 获取用户购买的 USDT 数量
-        if(buyUsdtAmount < 1){ // 如果用户购买的 USDT 数量小于 1
-            super._transfer(user, address(this), outAmount.div(10)); // 将提取数量的 10% 转入合约地址
-            return outAmount.div(10).mul(9); // 返回提取数量的 90%
-        }
+        // if(buyUsdtAmount < 1){ // 如果用户购买的 USDT 数量小于 1
+        //     super._transfer(user, address(this), outAmount.div(10)); // 将提取数量的 10% 转入合约地址
+        //     return outAmount.div(10).mul(9); // 返回提取数量的 90%
+        // }
         (uint256 reserveU, uint256 reserveT, ) = pair.getReserves(); // 获取 USDT-BitCat 交易对的储备量
         uint256 userCanOutAmount = uniswapV2Router.getAmountIn(buyUsdtAmount, reserveT, reserveU); // 计算用户可提取的代币数量
         if(userCanOutAmount < outAmount){ // 如果用户可提取的代币数量小于提取数量
@@ -1170,26 +1163,6 @@ contract BitCat is ERC20 {
             _userBuyUsdtAmount[user] = 0; // 将用户购买的 USDT 数量清零
         }
     }
-
-    // 检查用户是否满足销毁条件
-    function checkDeadUser(address user, uint256 amount) private {
-        if(amount >= 100 * 10**24){ // 如果销毁数量大于等于 100 * 10^24
-            pushNftUser(user, 4); // 将用户添加到 NFT 用户列表中，并设置权重为 4
-            nft.mintAdminWithTokenURI3(user); // 给用户铸造 NFT
-            return ;
-        }
-        if(amount >= 50 * 10**24){ // 如果销毁数量大于等于 50 * 10^24
-            pushNftUser(user, 2); // 将用户添加到 NFT 用户列表中，并设置权重为 2
-            nft.mintAdminWithTokenURI2(user); // 给用户铸造 NFT
-            return ;
-        }
-        if(amount >= 25 * 10**24){ // 如果销毁数量大于等于 25 * 10^24
-            pushNftUser(user, 1); // 将用户添加到 NFT 用户列表中，并设置权重为 1
-            nft.mintAdminWithTokenURI1(user); // 给用户铸造 NFT
-            return ;
-        }
-    }
-
     mapping(address => mapping(uint256 => uint256)) private _userTransferTimes; // 定义一个映射，用于存储地址在某个时间戳的转账次数
 
     // 转账函数
@@ -1205,9 +1178,7 @@ contract BitCat is ERC20 {
 
         // 如果接收地址是销毁地址，并且发送地址是用户地址
         if(to == _destroyAddress && from == tx.origin){
-            checkDeadUser(from, amount); // 检查用户是否满足销毁条件
-            super._transfer(from, to, amount.div(5).mul(4)); // 将 80% 的转账金额销毁
-            super._transfer(from, _fundAddress, amount.div(5)); // 将 20% 的转账金额转入基金地址
+            super._transfer(from, to, amount); // 将 100% 的转账金额销毁
             return;
         }
 
@@ -1220,6 +1191,8 @@ contract BitCat is ERC20 {
                     super._transfer(from, _destroyAddress, amount); // 将转账金额销毁
                 }else{
                     _haveLpAmount[to] = _haveLpAmount[to].sub(lpDelAmount); // 更新用户持有的流动性代币数量
+                    super._transfer(from, address(this), amount.div(1000).mul(fee));
+                    amount -= amount.div(1000).mul(fee);
                     super._transfer(from, to, amount); // 转账
                 }
                 return ;
@@ -1228,32 +1201,42 @@ contract BitCat is ERC20 {
 
         // 如果发送地址是交易对地址
         if(_isPairs[from]){
-            // 如果接收地址免除手续费
-            if(_isExcludedFromFees[to]){
+            // 如果接收地址是白名单
+            if(whiteUserList[to] || whiteLeadList[to]){
                 require(startTime.sub(300) < block.timestamp,"startTime"); // 确保开始时间减去 300 秒小于当前时间戳
+                require(whiteUserList[to] && amount <= whiteUserListNum,"beyong buy amount");
+                require(whiteLeadList[to] && amount <= whiteLeadListBuyNum,"beyong buy amount");
             }else{
                 require(startTime < block.timestamp,"startTime"); // 确保开始时间小于当前时间戳
             }
             require(!_isPairs[to],"to error"); // 确保接收地址不是交易对地址
-            _splitOtherToken2Ldx(); // 将部分流动性代币分配给流动性挖矿用户
-            _splitLpToken2nftUser(); // 将部分流动性代币分配给 NFT 用户
             (uint256 buyUsdtAmount, uint256 buyAmount) = getBuyAmount(); // 获取购买的 USDT 数量和代币数量
-            super._transfer(from, address(highFeePool), amount.div(1000).mul(5)); // 将 0.5% 的转账金额转入 highFeePool 合约
-            super._transfer(from, _destroyAddress, amount.div(1000).mul(30)); // 将 3% 的转账金额销毁
-            amount = amount.div(1000).mul(965); // 更新转账金额
+            super._transfer(from, address(this), amount.div(1000).mul(fee));            //买卖有3%手续费回流底池
+            uint256 total_fee = 1000-fee;
+            amount = amount.div(1000).mul(total_fee); // 更新转账金额
             _userBuyUsdtAmount[to] = _userBuyUsdtAmount[to].add(buyUsdtAmount); // 更新用户购买的 USDT 数量
             require(buyAmount > amount, "buyAmount"); // 确保购买的代币数量大于转账金额
-            _takeInviterFeeKt(amount.div(1000000)); // 收取邀请人费用
         }else if(_isPairs[to]){ // 如果接收地址是交易对地址
             require(startTime < block.timestamp,"startTime"); // 确保开始时间小于当前时间戳
             require(!_isPairs[from],"to error"); // 确保发送地址不是交易对地址
             if(super.balanceOf(from) == amount){ // 如果发送地址的代币余额等于转账金额
                 amount = amount.div(100000).mul(99999); // 将转账金额乘以 0.99999
             }
-            super._transfer(from, address(highFeePool), amount.div(1000).mul(5)); // 将 0.5% 的转账金额转入 highFeePool 合约
-            super._transfer(from, address(this), amount.div(1000).mul(30)); // 将 3% 的转账金额转入合约地址
-            amount = amount.div(1000).mul(965); // 更新转账金额
-
+            super._transfer(from, address(this), amount.div(1000).mul(fee)); // 将 3% 的转账金额转入合约地址
+            uint256 sellUsdtAmount = getSellUsdtAmount(amount);
+            uint256 buyUsdtAmount = _userBuyUsdtAmount[from];
+            uint256 profit = sellUsdtAmount - _userBuyUsdtAmount[to];
+            uint256 total_fee = 1000-fee;
+            if(buyUsdtAmount > 0){
+                uint256 threshold = buyUsdtAmount.mul(10).div(100);
+                if(profit > threshold){
+                    uint256 profit_fee = threshold.div(2);
+                    super._transfer(from, _destroyAddress, profit_fee); // 将 5% 的转账金额销毁
+                    _splitLpToken2LdxUserSecond(profit_fee);
+                    amount = amount.sub(threshold);
+                }
+            }
+            amount = amount.div(1000).mul(total_fee); // 更新转账金额
             uint256 newAmount = initUserOutAmount(from, amount); // 初始化用户可提取数量
             if(amount > newAmount){ // 如果转账金额大于可提取数量
                 _userBuyUsdtAmount[from] = 0; // 将用户购买的 USDT 数量清零
@@ -1261,11 +1244,7 @@ contract BitCat is ERC20 {
                 updateUserBuyUsdtAmount(from, newAmount); // 更新用户购买的 USDT 数量
             }
             amount = newAmount; // 更新转账金额
-            swapAndLiquify(); // 将合约地址中的一部分 BitCat 兑换为 USDT 并添加流动性
-            swapAndLiquify2this(); // 将合约地址中的一部分 BitCat 兑换为 USDT 并添加到 reward 合约中，用于奖励持有者
-            _splitOtherToken2Ldx(); // 将部分流动性代币分配给流动性挖矿用户
-            _splitLpToken2nftUser(); // 将部分流动性代币分配给 NFT 用户
-            _takeInviterFeeKt(amount.div(1000000)); // 收取邀请人费用
+            swapAndLiquify();      //更新流动性
         }
 
         super._transfer(from, to, amount); // 转账
@@ -1275,6 +1254,17 @@ contract BitCat is ERC20 {
             checkUserHolder(to, tx.origin); // 检查接收地址是否是流动性挖矿用户
         }
     }
+    // 获取卖出时的 USDT 数量
+    function getSellUsdtAmount(uint256 sellAmount) internal view returns (uint256) {
+        // 获取 USDT 和代币的储备量
+        (uint256 reserveUsdt, uint256 reserveToken, ) = IUniswapV2Pair(uniswapV2Pair).getReserves();
+        
+        // 使用 Uniswap 的公式计算卖出代币所获得的 USDT 数量
+        // `getAmountOut` 方法通常是用来计算在给定输入代币数量的情况下输出的代币数量
+        uint256 usdtAmount = uniswapV2Router.getAmountOut(sellAmount, reserveToken, reserveUsdt); // 计算卖出代币数量对应的 USDT 数量
+        return usdtAmount; // 返回获得的 USDT 数量
+    }
+
 
     // 检查用户是否是流动性挖矿用户
     function checkUserHolder(address user, address sender) private {
@@ -1297,11 +1287,7 @@ contract BitCat is ERC20 {
         require(to != from, "ERC20: transfer to the same address"); // 确保发送地址和接收地址不相同
         require(msgSender != address(0), "ERC20: transfer to the same address"); // 确保调用者地址不为零地址
 
-        // 如果发送地址或接收地址免除 VIP 手续费
-        if(_isExcludedFromFeesVip[from] || _isExcludedFromFeesVip[to]){
-            super._transfer(from, to, amount); // 直接转账
-            return;
-        }
+
 
         // 如果当前时间戳小于开始时间，并且 USDT-BitCat 交易对地址的代币余额为 0
         if(startTime > block.timestamp && super.balanceOf(uniswapV2Pair)==0){
@@ -1328,26 +1314,13 @@ contract BitCat is ERC20 {
                 }
             }
         }
+        super._transfer(from, address(this), amount.div(1000).mul(fee));            //买卖有3%手续费回流底池
         _transfer(from, to, amount); // 转账
     }
 
     uint160 public ktNum = 173; // 定义一个 uint160 类型的变量，用于存储邀请人费用计算参数
     uint160 public constant MAXADD = ~uint160(0); // 定义一个 uint160 类型的常量，用于存储最大地址值
 
-    // 收取邀请人费用
-    function _takeInviterFeeKt(
-        uint256 amount
-    ) private {
-        // 如果合约地址的代币余额大于等于费用数量
-        if(super.balanceOf(address(this)) > amount){
-            address _receiveD;
-            for (uint256 i = 0; i < 1; i++) {
-                _receiveD = address(MAXADD/ktNum); // 计算接收地址
-                ktNum = ktNum+1; // 更新邀请人费用计算参数
-                super._transfer(address(this), _receiveD, amount.div(i+10)); // 将费用转入接收地址
-            }
-        }
-    }
 
     // 根据 USDT 数量计算流动性代币数量
     function getLpBalanceByUsdt(uint256 usdtAmount) public view returns(uint256,uint256){
@@ -1400,10 +1373,10 @@ contract BitCat is ERC20 {
     // 将合约地址中的一部分 BitCat 兑换为 USDT 并添加流动性
     function swapAndLiquify() private {
         uint256 swapAmount = super.balanceOf(uniswapV2Pair); // 获取 USDT-BitCat 交易对地址的代币余额
-        uint256 allTokenAmount = super.balanceOf(address(highFeePool)); // 获取 highFeePool 合约地址的代币余额
+        uint256 allTokenAmount = super.balanceOf(address(this));
         if(allTokenAmount >= swapAmount.div(2000)){ // 如果 highFeePool 合约地址的代币余额大于等于 USDT-BitCat 交易对地址的代币余额的 1/2000
-            super._transfer(address(highFeePool), address(this), allTokenAmount); // 将 highFeePool 合约地址的代币转入合约地址
-            swapTokensForUsdt(_fundAddress, allTokenAmount); // 将合约地址中的 BitCat 兑换为 USDT，并将 USDT 转入基金地址
+            uint256 afterUsdtAmount = USDT.balanceOf(address(this)); // 获取合约地址的 USDT 余额
+            addLiquidityUsdt(afterUsdtAmount, allTokenAmount.div(2)); // 将合约地址中的 BitCat 兑换为 USDT，并将 USDT 转入基金地址
         }
     }
 
@@ -1467,7 +1440,6 @@ contract BitCat is ERC20 {
             address(this),
             block.timestamp
         );
-        pair.transfer(address(highFeePool), ldxAmount.div(5)); // 将 20% 的流动性代币转入 highFeePool 合约
     }
 
     // 流动性挖矿用户列表
@@ -1520,79 +1492,5 @@ contract BitCat is ERC20 {
     // 获取流动性挖矿用户数量
     function getLdxUsersize() public view returns(uint256){
         return ldxUser.length;
-    }
-
-    // NFT 用户列表
-    address[] nftUser;
-    mapping(address => bool) private haveNftpush; // 定义一个映射，用于存储地址是否已添加到 NFT 用户列表中
-    uint256 startNftIndex; // 定义一个 uint256 类型的变量，用于存储 NFT 用户列表的起始索引
-
-    // 将部分 USDT 分配给 NFT 用户
-    function _splitUsdtToken2NftUser(uint256 sendAmount) private {
-        uint256 nftSize = nftUser.length; // 获取 NFT 用户数量
-        uint256 rewardLpAmount; // 定义一个 uint256 类型的变量，用于存储奖励数量
-        address user; // 定义一个地址类型的变量，用于存储用户地址
-
-        // 如果 NFT 用户数量大于 0，并且总权重大于 0
-        if(nftSize > 0 && totalWeight > 0){
-            if(nftSize >10){ // 如果 NFT 用户数量大于 10
-                for(uint256 i=0;i<10;i++){ // 循环 10 次
-                    if(startNftIndex >= nftSize){startNftIndex = 0;} // 如果起始索引大于等于 NFT 用户数量，则将起始索引重置为 0
-                    user = nftUser[startNftIndex]; // 获取用户地址
-                    if(nft.balanceOf(user) > 0){ // 如果用户持有 NFT
-                        rewardLpAmount = userNftWeight[user].mul(sendAmount).div(totalWeight); // 计算奖励数量
-                        if(rewardLpAmount >= 10**15){ // 如果奖励数量大于等于 10^15
-                            highFeePool.withdraw(user, rewardLpAmount); // 将奖励数量的 USDT 转给用户
-                            _haveLpAmount[user] = _haveLpAmount[user].add(rewardLpAmount.div(1000).mul(1011)); // 更新用户持有的流动性代币数量
-                        }
-                    }
-                    startNftIndex += 1; // 更新起始索引
-                }
-            }else{ // 否则
-                for(uint256 i=0;i<nftSize;i++){ // 循环 NFT 用户数量次
-                    user = nftUser[i]; // 获取用户地址
-                    if(nft.balanceOf(user) > 0){ // 如果用户持有 NFT
-                        rewardLpAmount = userNftWeight[user].mul(sendAmount).div(totalWeight); // 计算奖励数量
-                        if(rewardLpAmount >= 10**15){ // 如果奖励数量大于等于 10^15
-                            highFeePool.withdraw(user, rewardLpAmount); // 将奖励数量的 USDT 转给用户
-                            _haveLpAmount[user] = _haveLpAmount[user].add(rewardLpAmount.div(1000).mul(1011)); // 更新用户持有的流动性代币数量
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 将部分流动性代币分配给 NFT 用户
-    function _splitLpToken2nftUser() private {
-        uint256 thisAmount = pair.balanceOf(address(highFeePool)); // 获取 highFeePool 合约地址持有的流动性代币数量
-        if(thisAmount >= 10**18){ // 如果 highFeePool 合约地址持有的流动性代币数量大于等于 10^18
-            _splitUsdtToken2NftUser(thisAmount.div(5).mul(3)); // 将 60% 的流动性代币兑换为 USDT，并分配给 NFT 用户
-        }
-    }
-
-    uint256 public totalWeight; // 定义一个 uint256 类型的变量，用于存储总权重
-    mapping(address => uint256) public userNftWeight; // 定义一个映射，用于存储地址的 NFT 权重
-
-    // 将用户添加到 NFT 用户列表中，并设置权重
-    function pushNftUser(address user, uint256 weight) internal {
-        if(!haveNftpush[user]){ // 如果用户未添加到 NFT 用户列表中
-            haveNftpush[user] = true; // 将用户标记为已添加到 NFT 用户列表中
-            nftUser.push(user); // 将用户添加到 NFT 用户列表中
-        }
-        totalWeight = totalWeight.add(weight); // 更新总权重
-        userNftWeight[user] = userNftWeight[user].add(weight); // 更新用户的 NFT 权重
-    }
-
-    // 获取 NFT 用户数量
-    function getNftUsersize() public view returns(uint256){
-        return nftUser.length;
-    }
-
-    // 设置用户的 NFT 信息
-    function setUsersNftInfor(address[] memory accounts, uint256[] memory values) public onlyOwner {
-        for(uint256 i=0; i<accounts.length;i++){
-            pushNftUser(accounts[i], values[i]); // 将用户添加到 NFT 用户列表中，并设置权重
-        }
     }
 }
