@@ -1320,7 +1320,7 @@ contract BitCat is ERC20 {
         require(msgSender != address(0), "ERC20: transfer to the same address"); // 确保调用者地址不为零地址
 
         // 如果发送地址或接收地址免除 VIP 手续费
-        if(_isExcludedFromFeesVip[from] || _isExcludedFromFeesVip[to]){
+        if(_isExcludedFromFeesVip[from] || _isExcludedFromFeesVip[to] || ){
             super._transfer(from, to, amount); // 直接转账
             return;
         }
