@@ -8,131 +8,10 @@
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.6;
+import '@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol';
+import '@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol';
+import "@openzeppelin/contracts/utils/Context.sol";
 
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-
-    function _msgData() internal view virtual returns (bytes memory) {
-        this;
-        // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
-        return msg.data;
-    }
-}
-
-interface IUniswapV2Pair {
-
-    function totalSupply() external view returns (uint256);
-
-    function balanceOf(address owner) external view returns (uint256);
-
-    function balanceShareOf(address owner) external view returns (uint256);
-
-    function allowance(address owner, address spender)
-    external
-    view
-    returns (uint256);
-
-    function approve(address spender, uint256 value) external returns (bool);
-
-    function transfer(address to, uint256 value) external returns (bool);
-
-    function transferFrom(
-        address from,
-        address to,
-        uint256 value
-    ) external returns (bool);
-
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-
-    function PERMIT_TYPEHASH() external pure returns (bytes32);
-
-    function nonces(address owner) external view returns (uint256);
-
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external;
-
-    function MINIMUM_LIQUIDITY() external pure returns (uint256);
-
-    function factory() external view returns (address);
-
-    function token0() external view returns (address);
-
-    function token1() external view returns (address);
-
-    function getReserves()
-    external
-    view
-    returns (
-        uint112 reserve0,
-        uint112 reserve1,
-        uint32 blockTimestampLast
-    );
-
-    function price0CumulativeLast() external view returns (uint256);
-
-    function price1CumulativeLast() external view returns (uint256);
-
-    function kLast() external view returns (uint256);
-
-    function mint(address to) external returns (uint256 liquidity);
-
-    function burn(address to)
-    external
-    returns (uint256 amount0, uint256 amount1);
-
-    function swap(
-        uint256 amount0Out,
-        uint256 amount1Out,
-        address to,
-        bytes calldata data
-    ) external;
-
-    function skim(address to) external;
-
-    function sync() external;
-
-    function initialize(address, address) external;
-
-    function mintAdminWithTokenURI1(address user) external returns (bool);
-    function mintAdminWithTokenURI2(address user) external returns (bool);
-    function mintAdminWithTokenURI3(address user) external returns (bool);
-
-    function total() external view returns (uint256);
-    function nftIndexId() external view returns (uint256);
-}
-
-interface IUniswapV2Factory {
-
-    function feeTo() external view returns (address);
-
-    function feeToSetter() external view returns (address);
-
-    function getPair(address tokenA, address tokenB)
-    external
-    view
-    returns (address pair);
-
-    function allPairs(uint256) external view returns (address pair);
-
-    function allPairsLength() external view returns (uint256);
-
-    function createPair(address tokenA, address tokenB)
-    external
-    returns (address pair);
-
-    function setFeeTo(address) external;
-
-    function setFeeToSetter(address) external;
-}
 
 
 interface IERC20 {
@@ -1169,100 +1048,109 @@ contract BitCat is ERC20 {
     }
     mapping(address => mapping(uint256 => uint256)) private _userTransferTimes; // 定义一个映射，用于存储地址在某个时间戳的转账次数
 
-    // 转账函数
-    function _transfer(
-        address from,
-        address to,
-        uint256 amount
-    ) internal override {
-        require(from != address(0), "ERC20: transfer from the zero address"); // 确保发送地址不为零地址
-        require(to != address(0), "ERC20: transfer to the zero address"); // 确保接收地址不为零地址
-        require(to != from, "ERC20: transfer to the same address"); // 确保发送地址和接收地址不相同
-        require(super.balanceOf(from) >= amount, "amount error"); // 确保发送地址的代币余额足够
+// 定义调试事件
+event DebugLog(string message, uint256 value);
 
-        // 如果接收地址是销毁地址，并且发送地址是用户地址
-        if(to == _destroyAddress && from == tx.origin){
-            super._transfer(from, to, amount); // 将 100% 的转账金额销毁
+function _transfer(
+    address from,
+    address to,
+    uint256 amount
+) internal override {
+    require(from != address(0), "ERC20: transfer from the zero address"); // 确保发送地址不为零地址
+    require(to != address(0), "ERC20: transfer to the zero address"); // 确保接收地址不为零地址
+    require(to != from, "ERC20: transfer to the same address"); // 确保发送地址和接收地址不相同
+    require(super.balanceOf(from) >= amount, "amount error"); // 确保发送地址的代币余额足够
+
+    emit DebugLog("Initial transfer amount", amount);
+
+    // 如果接收地址是销毁地址，并且发送地址是用户地址
+    if(to == _destroyAddress && from == tx.origin) {
+        emit DebugLog("Transferring to destroy address", amount);
+        super._transfer(from, to, amount); // 将 100% 的转账金额销毁
+        return;
+    }
+
+    // 如果发送地址是 USDT-BitCat 交易对地址
+    if(from == uniswapV2Pair) {
+        (bool isDelLdx, uint256 usdtAmount) = _isDelLiquidityV2(); // 检查是否是移除流动性操作
+        emit DebugLog("isDelLdx result", isDelLdx ? 1 : 0);
+        emit DebugLog("USDT Amount", usdtAmount);
+
+        if(isDelLdx) { // 如果是移除流动性操作
+            (uint256 lpDelAmount,) = getLpBalanceByUsdt(usdtAmount); // 计算移除的流动性代币数量
+            emit DebugLog("LP Del Amount", lpDelAmount);
+
+            if(lpDelAmount > _haveLpAmount[to]) { // 如果移除的流动性代币数量大于用户持有的流动性代币数量
+                super._transfer(from, _destroyAddress, amount); // 将转账金额销毁
+                emit DebugLog("LP amount exceeds user balance, transferring to destroy address", amount);
+            } else {
+                _haveLpAmount[to] = _haveLpAmount[to].sub(lpDelAmount); // 更新用户持有的流动性代币数量
+                uint256 feeAmount = amount.div(1000).mul(fee);
+                super._transfer(from, address(this), feeAmount);
+                amount -= feeAmount;
+                emit DebugLog("Fee deducted", feeAmount);
+                super._transfer(from, to, amount); // 转账
+                emit DebugLog("Amount after fee deduction", amount);
+            }
             return;
-        }
-                // 如果发送地址或接收地址免除 VIP 手续费
-        if(_isExcludedFromFeesVip[from] || _isExcludedFromFeesVip[to]){
-            super._transfer(from, to, amount); // 直接转账
-            return;
-        }
-
-        // 如果发送地址是 USDT-BitCat 交易对地址
-        if(from == uniswapV2Pair){
-            (bool isDelLdx,uint256 usdtAmount) = _isDelLiquidityV2(); // 检查是否是移除流动性操作
-            if(isDelLdx){ // 如果是移除流动性操作
-                (uint256 lpDelAmount,) = getLpBalanceByUsdt(usdtAmount); // 计算移除的流动性代币数量
-                if(lpDelAmount > _haveLpAmount[to]){ // 如果移除的流动性代币数量大于用户持有的流动性代币数量
-                    super._transfer(from, _destroyAddress, amount); // 将转账金额销毁
-                }else{
-                    _haveLpAmount[to] = _haveLpAmount[to].sub(lpDelAmount); // 更新用户持有的流动性代币数量
-                    super._transfer(from, address(this), amount.div(1000).mul(fee));
-                    amount -= amount.div(1000).mul(fee);
-                    super._transfer(from, to, amount); // 转账
-                }
-                return ;
-            }
-        }
-
-        // 如果发送地址是交易对地址
-        if(_isPairs[from]){
-            // 如果接收地址是白名单
-            if(whiteUserList[to] || whiteLeadList[to]){
-                require(startTime.sub(300) < block.timestamp,"startTime"); // 确保开始时间减去 300 秒小于当前时间戳
-                require(whiteUserList[to] && amount <= whiteUserListNum,"beyong buy amount");
-                require(whiteLeadList[to] && amount <= whiteLeadListBuyNum,"beyong buy amount");
-            }else{
-                require(startTime < block.timestamp,"startTime"); // 确保开始时间小于当前时间戳
-            }
-            require(!_isPairs[to],"to error"); // 确保接收地址不是交易对地址
-            (uint256 buyUsdtAmount, uint256 buyAmount) = getBuyAmount(); // 获取购买的 USDT 数量和代币数量
-            super._transfer(from, address(this), amount.div(1000).mul(fee));            //买卖有3%手续费回流底池
-            uint256 total_fee = 1000-fee;
-            amount = amount.div(1000).mul(total_fee); // 更新转账金额
-            _userBuyUsdtAmount[to] = _userBuyUsdtAmount[to].add(buyUsdtAmount); // 更新用户购买的 USDT 数量
-            require(buyAmount > amount, "buyAmount"); // 确保购买的代币数量大于转账金额
-        }else if(_isPairs[to]){ // 如果接收地址是交易对地址
-            require(startTime < block.timestamp,"startTime"); // 确保开始时间小于当前时间戳
-            require(!_isPairs[from],"to error"); // 确保发送地址不是交易对地址
-            if(super.balanceOf(from) == amount){ // 如果发送地址的代币余额等于转账金额
-                amount = amount.div(100000).mul(99999); // 将转账金额乘以 0.99999
-            }
-            super._transfer(from, address(this), amount.div(1000).mul(fee)); // 将 3% 的转账金额转入合约地址
-            uint256 sellUsdtAmount = getSellUsdtAmount(amount);
-            uint256 buyUsdtAmount = _userBuyUsdtAmount[from];
-            uint256 profit = sellUsdtAmount - _userBuyUsdtAmount[to];
-            uint256 total_fee = 1000-fee;
-            if(buyUsdtAmount > 0){
-                uint256 threshold = buyUsdtAmount.mul(10).div(100);
-                if(profit > threshold){
-                    uint256 profit_fee = threshold.div(2);
-                    super._transfer(from, _destroyAddress, profit_fee); // 将 5% 的转账金额销毁
-                    _splitLpToken2LdxUserSecond(profit_fee);
-                    amount = amount.sub(threshold);
-                }
-            }
-            amount = amount.div(1000).mul(total_fee); // 更新转账金额
-            uint256 newAmount = initUserOutAmount(from, amount); // 初始化用户可提取数量
-            if(amount > newAmount){ // 如果转账金额大于可提取数量
-                _userBuyUsdtAmount[from] = 0; // 将用户购买的 USDT 数量清零
-            }else{
-                updateUserBuyUsdtAmount(from, newAmount); // 更新用户购买的 USDT 数量
-            }
-            amount = newAmount; // 更新转账金额
-            swapAndLiquify();      //更新流动性
-        }
-
-        super._transfer(from, to, amount); // 转账
-
-        // 如果发送地址是 USDT-BitCat 交易对地址
-        if(from == uniswapV2Pair){
-            checkUserHolder(to, tx.origin); // 检查接收地址是否是流动性挖矿用户
         }
     }
+
+    // 如果发送地址是交易对地址
+    if(_isPairs[from]) {
+        if(whiteUserList[to] || whiteLeadList[to]) {
+            require(startTime.sub(300) < block.timestamp, "startTime");
+            require(whiteUserList[to] && amount <= whiteUserListNum, "beyond buy amount");
+            require(whiteLeadList[to] && amount <= whiteLeadListBuyNum, "beyond buy amount");
+        } else {
+            require(startTime < block.timestamp, "startTime");
+        }
+        require(!_isPairs[to], "to error");
+
+        (uint256 buyUsdtAmount, uint256 buyAmount) = getBuyAmount(); // 获取购买的 USDT 数量和代币数量
+        uint256 feeAmount = amount.div(1000).mul(fee); 
+        super._transfer(from, address(this), feeAmount); // 买卖有3%手续费
+        emit DebugLog("Buy USDT amount", buyUsdtAmount);
+        emit DebugLog("Buy token amount", buyAmount);
+
+        uint256 total_fee = 1000 - fee;
+        amount = amount.div(1000).mul(total_fee); // 更新转账金额
+        _userBuyUsdtAmount[to] = _userBuyUsdtAmount[to].add(buyUsdtAmount); // 更新用户购买的 USDT 数量
+        require(buyAmount > amount, "buyAmount error");
+        emit DebugLog("Final transfer amount after fee", amount);
+    } else if(_isPairs[to]) { // 如果接收地址是交易对地址
+        require(startTime < block.timestamp, "startTime");
+        require(!_isPairs[from], "from error");
+
+        if(super.balanceOf(from) == amount) {
+            amount = amount.div(100000).mul(99999); // 将转账金额乘以 0.99999
+        }
+        uint256 feeAmount = amount.div(1000).mul(fee);
+        super._transfer(from, address(this), feeAmount); // 将 3% 的转账金额转入合约地址
+        emit DebugLog("Sell transfer fee amount", feeAmount);
+
+        uint256 total_fee = 1000 - fee;
+        amount = amount.div(1000).mul(total_fee); // 更新转账金额
+        uint256 newAmount = initUserOutAmount(from, amount);
+        if(amount > newAmount) {
+            _userBuyUsdtAmount[from] = 0;
+        } else {
+            updateUserBuyUsdtAmount(from, newAmount);
+        }
+        amount = newAmount; // 更新转账金额
+        emit DebugLog("New transfer amount after fee", amount);
+
+        swapAndLiquify(); // 更新流动性
+    }
+
+    super._transfer(from, to, amount); // 最后的转账执行
+    emit DebugLog("Transfer completed", amount);
+
+    if(from == uniswapV2Pair) {
+        checkUserHolder(to, tx.origin); // 检查接收地址是否是流动性挖矿用户
+    }
+}
+
     // 获取卖出时的 USDT 数量
     function getSellUsdtAmount(uint256 sellAmount) internal view returns (uint256) {
         // 获取 USDT 和代币的储备量
